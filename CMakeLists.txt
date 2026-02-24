@@ -55,10 +55,19 @@ set(GAME_BUILD_APPLE_CODE_SIGNING OFF CACHE BOOL "Activer la signature de code p
 # C'est utiliser pour générer dynamiquement le fichier de ressources Windows (.rc) ou les Info.plist pour Apple, 
 # afin d'inclure ces métadonnées dans l'exécutable final.
 # ============================================================
-if(DEFINED ENV{APP_VERSION})
-  set(APP_VERSION "$ENV{APP_VERSION}" CACHE STRING "Version de l'application")
+
+# Version "numérique" strict (SemVer) -> pour FILEVERSION/PRODUCTVERSION (Windows) et CFBundleShortVersionString (iOS/macOS).
+if(DEFINED ENV{APP_VERSION_NUMERIC})
+  set(APP_VERSION_NUMERIC "$ENV{APP_VERSION_NUMERIC}" CACHE STRING "Version numerique (major.minor.patch)")
 else()
-  set(APP_VERSION "1.0.0" CACHE STRING "Version de l'application")
+  set(APP_VERSION_NUMERIC "1.0.0" CACHE STRING "Version numerique (major.minor.patch)")
+endif()
+
+# Version "string" libre -> visible dans les propriétés Windows, Android, Linux(AppImage).
+if(DEFINED ENV{APP_VERSION_STR})
+  set(APP_VERSION_STR "$ENV{APP_VERSION_STR}" CACHE STRING "Version string (peut contenir branch/sha)")
+else()
+  set(APP_VERSION_STR "1.0.0-staging-commitshashort" CACHE STRING "Version string (peut contenir branch/sha)")
 endif()
 
 # Découper la version en parties
@@ -759,7 +768,7 @@ elseif (APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_BUNDLE_NAME ${APP_TARGET} # Nom de l'application (à modifier pour chaque application)
     MACOSX_BUNDLE_GUI_IDENTIFIER ${APP_IOSMACOS_IDENTIFIER} # L'identifiant de votre application (via identifiers sur le compte apple developer), à modifier pour chaque application
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${APP_VERSION} # Version utilisateur lisible (à modifier pour chaque application)
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${APP_VERSION_NUMERIC} # Version utilisateur lisible (à modifier pour chaque application)
     MACOSX_BUNDLE_BUNDLE_VERSION ${APP_IOSMACOS_BUILD_VERSION} # Version de build unique (à modifier pour chaque application)
     MACOSX_BUNDLE_COPYRIGHT ${APP_LEGAL_COPYRIGHT} # Droits d'auteur (à modifier pour chaque application)
     MACOSX_BUNDLE_ICON_FILE "app-icon.icns"
@@ -911,7 +920,7 @@ elseif(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_BUNDLE_NAME ${APP_TARGET} # Nom de l'application (à modifier pour chaque application)
     MACOSX_BUNDLE_GUI_IDENTIFIER ${APP_IOSMACOS_IDENTIFIER} # L'identifiant de votre application (via identifiers sur le compte apple developer) à modifier pour chaque application
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${APP_VERSION} # Version utilisateur lisible (à modifier pour chaque application)
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${APP_VERSION_NUMERIC} # Version utilisateur lisible (à modifier pour chaque application)
     MACOSX_BUNDLE_BUNDLE_VERSION ${APP_IOSMACOS_BUILD_VERSION} # Version de build unique (à modifier pour chaque application)
     MACOSX_BUNDLE_COPYRIGHT ${APP_LEGAL_COPYRIGHT} # Droits d'auteur
     MACOSX_BUNDLE_INFO_STRING ${APP_GAME_DESCRIPTION} # Description de l'application (à modifier pour chaque application)
@@ -1026,7 +1035,7 @@ elseif(UNIX AND NOT APPLE AND NOT ANDROID AND NOT (RC2D_PLATFORM STREQUAL "STEAM
       ICON \"${PROJECT_SOURCE_DIR}/icons/linux/app-icon.png\"
       DIR_ICON \"${PROJECT_SOURCE_DIR}/icons/linux/app-icon.png\"
       OUTPUT_NAME \"${APPIMAGE_OUTPUT}\"
-      APP_VERSION \"${APP_VERSION}\"
+      APP_VERSION \"${APP_VERSION_STR}\"
       APP_ARCH \"${APPIMAGE_ARCH}\"
       APPDIR \"${APPDIR}\"
 
