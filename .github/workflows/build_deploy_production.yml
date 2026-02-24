@@ -282,7 +282,7 @@ jobs:
 
       - name: Sign files with AzureSignTool - Windows (x64/x86)
         if: matrix.platform == 'windows-latest'
-        uses: CrzGames/azure-signtool-action@v1.0.1
+        uses: CrzGames/azure-signtool-action@v1.1.0
         with:
           azure-key-vault-url: 'https://signmycodecertificates.vault.azure.net'
           azure-key-vault-client-id: ${{ secrets.AZURE_KEY_VAULT_APP_CLIENT_ID }}
