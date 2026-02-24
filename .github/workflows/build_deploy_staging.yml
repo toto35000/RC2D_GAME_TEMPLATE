@@ -16,7 +16,7 @@ env:
   ANDROID_CMDLINE_TOOLS_VERSION: "20.0"
   JAVA_DISTRIBUTION: "temurin"
   JAVA_VERSION: "17"
-s
+
   XCODE_VERSION: "26.3.0"
 
   # TODO: A modifier pour chaque nouvelle application iOS / macOS pour : com.crzgames.*
