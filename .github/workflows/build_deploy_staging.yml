@@ -16,10 +16,7 @@ env:
   ANDROID_CMDLINE_TOOLS_VERSION: "20.0"
   JAVA_DISTRIBUTION: "temurin"
   JAVA_VERSION: "17"
-  ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-  ANDROID_KEYSTORE_ALIAS_NAME: ${{ secrets.ANDROID_KEYSTORE_ALIAS_NAME }}
-  ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
-
+s
   XCODE_VERSION: "26.3.0"
 
   # TODO: A modifier pour chaque nouvelle application iOS / macOS pour : com.crzgames.*
@@ -44,8 +41,6 @@ env:
   APP_IOS_CODE_SIGN_IDENTITY: "Apple Distribution: Corentin Recanzone (2X96T6AM4K)"
   # Cela sert pour le CMakelists.txt
   APP_MACOS_CODE_SIGN_IDENTITY: "Developer ID Application: Corentin Recanzone (2X96T6AM4K)"
-  # Cela sert pour le CMakelists.txt
-  APP_VERSION: 1.0.0 # Valeur par défaut, sera écrasé par la valeur lue dans version.txt
 
   ###### IOS ######
   # Certificat Apple au format p12 encodé en base64 
@@ -109,30 +104,69 @@ jobs:
       - name: Get dependencies with CMake - All platforms
         run: cmake -P cmake/setup_dependencies.cmake
 
-      - name: Read current version from version.txt and append branch and commit hash - Windows
-        if: matrix.config.platform == 'windows'
-        run: |
-          VERSION_BASE=$(cat version.txt)
-          
-          # Check if VERSION_BASE is empty and set default value if necessary
-          if [ -z "$VERSION_BASE" ]; then
-            VERSION_BASE="1.0.0"
-          fi
-          
-          echo "APP_VERSION=$VERSION_BASE" >> $GITHUB_ENV
+      - name: Compute APP_VERSION_NUMERIC / APP_VERSION_STR / APP_VERSION (compat) and export variables - All platforms
         shell: bash
-
-      - name: Read current version from version.txt and append branch and commit hash - Linux / Android / SteamRT4 / macOS / iOS
-        if: matrix.config.platform != 'windows'
         run: |
-          VERSION_BASE=$(cat version.txt)
-          
-          # Check if VERSION_BASE is empty and set default value if necessary
-          if [ -z "$VERSION_BASE" ]; then
+          set -euo pipefail
+
+          # ============================================================
+          # 1) Lire la version SemVer stricte depuis version.txt
+          # ============================================================
+          VERSION_BASE="$(cat version.txt 2>/dev/null || true)"
+          VERSION_BASE="$(echo "$VERSION_BASE" | tr -d '[:space:]')"
+
+          # fallback sécurisé
+          if [[ -z "$VERSION_BASE" ]]; then
             VERSION_BASE="1.0.0"
           fi
-          
-          echo "APP_VERSION=$VERSION_BASE" >> $GITHUB_ENV
+
+          # validation SemVer strict (major.minor.patch)
+          if ! [[ "$VERSION_BASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: version.txt doit contenir un SemVer strict: major.minor.patch (ex: 1.2.3). Got: '$VERSION_BASE'"
+            exit 1
+          fi
+
+          # ============================================================
+          # 2) Générer branch + sha court et SANITIZE (important)
+          # ============================================================
+          COMMIT_SHA_SHORT="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+
+          # remplace tout ce qui n'est pas safe par '-'
+          # (évite '/' ':' espaces etc.)
+          BRANCH_SAFE="$(echo "$BRANCH_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g')"
+
+          # ============================================================
+          # 3) Construire les deux versions
+          # ============================================================
+          APP_VERSION_NUMERIC="$VERSION_BASE"
+          APP_VERSION_STR="${VERSION_BASE}-${BRANCH_SAFE}-${COMMIT_SHA_SHORT}"
+
+          # Apple: on ne veut PAS de suffixe dans CFBundleShortVersionString
+          # => on garde APP_VERSION_NUMERIC pour macos/ios, mais on exporte quand même APP_VERSION_STR
+          # (utile pour nommage d'artefacts / S3 / logs si tu veux)
+          if [[ "${{ matrix.config.platform }}" == "macos" || "${{ matrix.config.platform }}" == "ios" ]]; then
+            APP_VERSION_EFFECTIVE="$APP_VERSION_NUMERIC"
+          else
+            APP_VERSION_EFFECTIVE="$APP_VERSION_STR"
+          fi
+
+          # ============================================================
+          # 4) Export pour les steps suivants + logs
+          # ============================================================
+          {
+            echo "APP_VERSION_NUMERIC=$APP_VERSION_NUMERIC"
+            echo "APP_VERSION_STR=$APP_VERSION_STR"
+            # si tu avais du code existant qui utilise APP_VERSION, on le garde pour compat
+            echo "APP_VERSION=$APP_VERSION_EFFECTIVE"
+            echo "VERSION_BASE=$VERSION_BASE"
+            echo "COMMIT_SHA_SHORT=$COMMIT_SHA_SHORT"
+            echo "BRANCH_SAFE=$BRANCH_SAFE"
+          } >> "$GITHUB_ENV"
+
+          echo "APP_VERSION_NUMERIC: $APP_VERSION_NUMERIC"
+          echo "APP_VERSION_STR:     $APP_VERSION_STR"
+          echo "APP_VERSION (compat): $APP_VERSION_EFFECTIVE"
           
       - name: Set variables environment for versionCode and versionName - Android
         if: matrix.config.platform == 'android'
@@ -233,7 +267,7 @@ jobs:
         if: matrix.config.platform == 'android'
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
 
-      - name: Generate APK / AAB and Sign - Android
+      - name: Generate APK / AAB and Sign - Android 
         if: matrix.config.platform == 'android'
         run: |
           chmod +x ./gradlew
@@ -241,6 +275,9 @@ jobs:
           ./gradlew bundleRelease
         working-directory: android-project
         env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS_NAME: ${{ secrets.ANDROID_KEYSTORE_ALIAS_NAME }}
+          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
           ANDROID_VERSION_CODE: ${{ env.ANDROID_VERSION_CODE }}
           ANDROID_VERSION_NAME: ${{ env.ANDROID_VERSION_NAME }}
 
@@ -261,17 +298,17 @@ jobs:
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           # import certificate and provisioning profile from secrets
-          echo -n "$IOSMACOS_APPLE_CERTIFICATE_APPLEDISTRIBUTION_P12_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-          echo -n "$IOSMACOS_APPLE_PROVISIONING_PROFILE_APPLEDISTRIBUTION_BASE64" | base64 --decode -o $PP_PATH
+          echo -n "${{ env.IOSMACOS_APPLE_CERTIFICATE_APPLEDISTRIBUTION_P12_BASE64 }}" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "${{ env.IOSMACOS_APPLE_PROVISIONING_PROFILE_APPLEDISTRIBUTION_BASE64 }}" | base64 --decode -o $PP_PATH
 
           # create temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security create-keychain -p "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security unlock-keychain -p "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
 
           # import certificate to keychain
-          security import $CERTIFICATE_PATH -P "$IOSMACOS_APPLE_CERTIFICATE_APPLEDISTRIBUTION_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "${{ env.IOSMACOS_APPLE_CERTIFICATE_APPLEDISTRIBUTION_P12_PASSWORD }}" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
           # apply provisioning profile
@@ -286,16 +323,16 @@ jobs:
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           # import certificate
-          echo -n "$MACOS_APPLE_CERTIFICATE_DEVELOPERIDAPPLICATION_P12_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "${{ env.MACOS_APPLE_CERTIFICATE_DEVELOPERIDAPPLICATION_P12_BASE64 }}" | base64 --decode -o $CERTIFICATE_PATH
 
           # create temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security create-keychain -p "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security unlock-keychain -p "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
 
           # import certificate to keychain
-          security import $CERTIFICATE_PATH -P "$MACOS_APPLE_CERTIFICATE_DEVELOPERIDAPPLICATION_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "${{ env.MACOS_APPLE_CERTIFICATE_DEVELOPERIDAPPLICATION_P12_PASSWORD }}" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "${{ env.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
       - name: Setup Xcode and Setup Command Line Tools - macOS / iOS
@@ -393,11 +430,22 @@ jobs:
           cxx-compiler: g++
           options: CMAKE_BUILD_TYPE=Release RC2D_ARCH=${{ matrix.config.arch }}
 
-      - name: CMake Install for generate AppImage - Linux
-        if: matrix.config.platform == 'linux'
+      - name: Configure project with CMake and Run build - SteamRT4 (x64/arm64)
+        if: matrix.config.platform == 'steamrt4'
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          run-build: true
+          build-dir: build-${{ matrix.config.platform }}-${{ matrix.config.arch }}
+          generator: Unix Makefiles
+          c-compiler: gcc
+          cxx-compiler: g++
+          options: CMAKE_BUILD_TYPE=Release RC2D_ARCH=${{ matrix.config.arch }} RC2D_PLATFORM=STEAMRT4
+
+      - name: CMake Install for generate AppImage - Linux (x64/arm64) / SteamRT4 (x64/arm64)
+        if: matrix.config.platform == 'linux' || matrix.config.platform == 'steamrt4'
         run: cmake --install build-${{ matrix.config.platform }}-${{ matrix.config.arch }}
-        
-      - name: Configure project with CMake - macOS
+
+      - name: Configure project with CMake - macOS (arm64)
         if: matrix.config.platform == 'macos'
         uses: threeal/cmake-action@v2.1.0
         with:
@@ -408,7 +456,7 @@ jobs:
           options: CMAKE_SYSTEM_NAME=Darwin
           # A voir si on supprime ou pas : CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
           
-      - name: Run build with CMake - macOS
+      - name: Run build with CMake - macOS (arm64)
         if: matrix.config.platform == 'macos'
         run: cmake --build build-${{ matrix.config.platform }}-${{ matrix.config.arch }} --config Release
 
@@ -489,7 +537,14 @@ jobs:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
           path: |
-            build-${{ matrix.config.platform }}-${{ matrix.config.arch }}/Release/*.AppImage
+            build-${{ matrix.config.platform }}-${{ matrix.config.arch }}/*.AppImage
+
+      - name: Archive executable artifacts - SteamRT4
+        if: matrix.config.platform == 'steamrt4'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
+          retention-days: 1
 
       - name: Archive executable artifacts - Windows
         if: matrix.config.platform == 'windows'
