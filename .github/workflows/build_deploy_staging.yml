@@ -196,7 +196,7 @@ jobs:
       - name: Upload version in Artifacts - Linux x64 (for Windows / Linux / Android / SteamRT4)
         # On execute cette étape que sur 1 Linux parce que c'est la même version pour Windows, Linux, Android et SteamRT4
         if: matrix.config.platform == 'linux' && matrix.config.arch == 'x64'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: variables
           path: variables.env
@@ -211,7 +211,7 @@ jobs:
       - name: Upload version and identifier in Artifacts - macOS / iOS
         # On execute cette étape que sur macOS parce que c'est la même version pour macOS et iOS
         if: matrix.config.platform == 'macos'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: variables-apple
           path: variables-apple.env
@@ -507,7 +507,7 @@ jobs:
 
       - name: Archive executable artifacts - Android
         if: matrix.config.platform == 'android'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}
           retention-days: 1
@@ -515,7 +515,7 @@ jobs:
 
       - name: Archive executable artifacts - iOS
         if: matrix.config.platform == 'ios'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
@@ -524,7 +524,7 @@ jobs:
 
       - name: Archive executable artifacts - macOS
         if: matrix.config.platform == 'macos'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
@@ -532,7 +532,7 @@ jobs:
 
       - name: Archive executable artifacts - Linux
         if: matrix.config.platform == 'linux'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
@@ -541,14 +541,14 @@ jobs:
 
       - name: Archive executable artifacts - SteamRT4
         if: matrix.config.platform == 'steamrt4'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
 
       - name: Archive executable artifacts - Windows
         if: matrix.config.platform == 'windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.config.platform }}-${{ matrix.config.arch }}
           retention-days: 1
